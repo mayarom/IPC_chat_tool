@@ -20,11 +20,10 @@
 #include "common.h"
 #include "partB.h"
 #include "server.h"
-
+#include "client.h"
 
 // Buffer size for sending and receiving messages
 #define BUFFER_SIZE_MESSAGE 1024
-
 
 // Function to run the isClient
 void client_main_func(char *ip, char *port);

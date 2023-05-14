@@ -5,9 +5,9 @@ CC = gcc
 all: stnc
 
 # Build stnc
-stnc: stnc.o partB.o common.o server.o
+stnc: stnc.o partB.o common.o server.o client.o
 	@echo "Building stnc..."
-	@$(CC) -o stnc stnc.o partB.o common.o server.o
+	@$(CC) -o stnc stnc.o partB.o common.o server.o client.o
 	@echo "stnc built successfully."
 	@echo "╔══════════════════════════════════════════════════════════════════════════╗"
 	@echo "║                                  Usage                                   ║"

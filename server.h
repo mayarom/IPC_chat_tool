@@ -19,6 +19,8 @@
 #include <sys/mman.h>
 #include "globals.h"
 #include "server.h"
+#include "client.h"
+
 
 
 // create a socket and bind it to a port

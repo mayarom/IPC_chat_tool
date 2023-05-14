@@ -1,4 +1,5 @@
 #include "partB.h"
+#include <string.h>
 
 void generate_file(char *filename, long size_in_bytes, int quiet)
 {
@@ -240,7 +241,7 @@ int recive_file(char *port, int domain, int type, int protocol, int filesize, in
         {
             print_error_and_exit("ERROR on accept");
         }
-            
+
         if (!quiet)
             printf("Accepted connection \n");
 

@@ -1,4 +1,5 @@
 #include "stnc.h"
+#include <string.h>
 
 int udp, uds, dgram, stream, isMmap, isPipe, deleteFile, quiet;
 char *filename, *ip, *port, *type, *param;
@@ -39,14 +40,9 @@ void client_main_func(char *ip, char *port)
     }
 
     // Create socket
-    int sockfd;
-    sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sockfd < 0)
-    {
-        print_error_and_exit("ERROR opening socket");
-    }
+    int sockfd = client_create_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
-    // Get isServer
+    // Get server address
     struct sockaddr_in serv_addr;
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
@@ -56,6 +52,8 @@ void client_main_func(char *ip, char *port)
     {
         print_error_and_exit("ERROR inet_pton() failed");
     }
+
+    // Connect to the server
     if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
         print_error_and_exit("ERROR connecting");
@@ -63,152 +61,37 @@ void client_main_func(char *ip, char *port)
 
     // Create pollfd to monitor stdin and socket
     struct pollfd fds[2];
-    create_pollfd(sockfd, fds);
+    fds[0].fd = STDIN_FILENO;
+    fds[0].events = POLLIN;
+    fds[1].fd = sockfd;
+    fds[1].events = POLLIN;
 
     char messageBuffer[BUFFER_SIZE_MESSAGE];
     int timeout = -1; // Infinite timeout
 
     while (1)
     {
-        if (isTest)
-        { // isTest mode
-          // generate file if not exist
-            generate_file("chat_test.txt", 100 * 1024 * 1024, quiet);
-            // create new port for file transfer port+1
-            char new_port[10];
-            sprintf(new_port, "%d", atoi(port) + 1);
-
-            // send filesize
-            int filesize = find_file_size("chat_test.txt");
-            char filesize_str[20];
-            sprintf(filesize_str, "%d", filesize);
-            int bytesSent = byte_sent(sockfd, filesize_str, strlen(filesize_str));
-            sleep(0.1);
-
-            // send checksum
-            uint32_t checksum = generate_checksum("chat_test.txt", quiet);
-            char checksum_str[20];
-            sprintf(checksum_str, "%d", checksum);
-            bytesSent = send(sockfd, checksum_str, strlen(checksum_str), 0);
-            if (bytesSent < 0)
-            {
-                print_error_and_exit("ERROR send() failed");
-            }
-            sleep(0.1);
-
-            struct timeval start;
-            gettimeofday(&start, NULL);
-
-            // send start time
-            char start_time_str[20];
-            sprintf(start_time_str, "%ld.%06ld", start.tv_sec, start.tv_usec);
-            bytesSent = send(sockfd, start_time_str, strlen(start_time_str), 0);
-            if (bytesSent < 0)
-            {
-                print_error_and_exit("ERROR send() failed");
-            }
-            sleep(0.1);
-
-            if (isTCP)
-            {
-                if (ipv4)
-                {
-                    if (!quiet)
-                        printf("TCP IPv4\n");
-                    bytesSent = send(sockfd, "ipv4 isTCP", 8, 0); // send isTest command
-                    send_file(ip, new_port, "chat_test.txt", AF_INET, SOCK_STREAM, IPPROTO_TCP, quiet);
-                }
-                else if (ipv6)
-                {
-                    if (!quiet)
-                        printf("TCP IPv6\n");
-                    bytesSent = send(sockfd, "ipv6 isTCP", 8, 0); // send isTest command
-                    send_file(ip, new_port, "chat_test.txt", AF_INET6, SOCK_STREAM, IPPROTO_TCP, quiet);
-                }
-            }
-            else if (udp)
-            {
-                if (ipv4)
-                {
-                    if (!quiet)
-                        printf("UDP IPv4\n");
-                    bytesSent = send(sockfd, "ipv4 udp", 8, 0); // send isTest command
-                    send_file(ip, new_port, "chat_test.txt", AF_INET, SOCK_DGRAM, 0, quiet);
-                }
-                else if (ipv6)
-                {
-                    if (!quiet)
-                        printf("UDP IPv6\n");
-                    bytesSent = send(sockfd, "ipv6 udp", 8, 0); // send isTest command
-                    send_file(ip, new_port, "chat_test.txt", AF_INET6, SOCK_DGRAM, 0, quiet);
-                }
-            }
-            else if (uds)
-            {
-                run_uds_test(uds, dgram, stream, sockfd, new_port, quiet);
-            }
-            else if (isMmap)
-            {
-                if (!quiet)
-                    printf("MMAP\n");
-                copy_file_to_shm_mmap("chat_test.txt", filename, quiet); // copy file to shared memory
-                bytesSent = send(sockfd, filename, strlen(filename), 0); // send filepath to shared memory
-            }
-            else if (isPipe)
-            {
-                if (!quiet)
-                {
-                }
-                printf("PIPE\n");
-                bytesSent = send(sockfd, filename, strlen(filename), 0); // send fifo name to named pipe
-                send_file_fifo("chat_test.txt", filename, quiet);        // copy file to named pipe
-            }
-
-            if (bytesSent < 0)
-            {
-                printf("ERROR send() failed\n");
-                exit(1);
-            }
-
-            delete_file("chat_test.txt", quiet);
-            exit(0);
-        }
         // Poll stdin and socket
-        int pollResult = create_poll(fds);
+        client_poll_for_events(fds, 2, timeout);
 
-        if (fds[0].revents & POLLIN) // check if user input
+        if (fds[0].revents & POLLIN)
         {
-            // Read user input
-            int bytesRead = read_user_input(messageBuffer);
-
-            messageBuffer[bytesRead] = '\0';
-
-            // Send user input to isServer
-            int bytesSent = send(sockfd, messageBuffer, bytesRead, 0);
-            if (bytesSent < 0)
-            {
-                print_error_and_exit("ERROR send() failed");
-            }
-            bzero(messageBuffer, BUFFER_SIZE_MESSAGE);
+            // User input
+            client_handle_user_input(sockfd, messageBuffer, BUFFER_SIZE_MESSAGE);
         }
-        if (fds[1].revents & POLLIN) // check if isServer sent message
+
+        if (fds[1].revents & POLLIN)
         {
-            // Read message from isServer
-            int bytesRecv = recv(sockfd, messageBuffer, BUFFER_SIZE_MESSAGE - 1, 0);
-            if (bytesRecv < 0)
-            {
-                print_error_and_exit("ERROR recv() failed");
-            }
+            // Message from server
+            int bytesRecv = client_handle_client_message(sockfd, messageBuffer, BUFFER_SIZE_MESSAGE, port);
             if (bytesRecv == 0)
             {
-                printf("Server closed connection... bye bye \n");
+                printf("Server closed connection... bye bye\n");
                 exit(0);
             }
-            messageBuffer[bytesRecv] = '\0';
-            printf("Server: %s", messageBuffer);
-            bzero(messageBuffer, BUFFER_SIZE_MESSAGE);
         }
     }
+
     close(sockfd);
 }
 void run_program(int isClient, int isServer, char *ip, char *port, void (*print_usage)())
