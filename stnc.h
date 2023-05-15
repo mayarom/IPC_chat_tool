@@ -1,5 +1,6 @@
 #ifndef STNC_H
 #define STNC_H
+#define _POSIX_C_SOURCE 200809L
 
 #include <stdlib.h>
 #include <errno.h>
@@ -21,6 +22,8 @@
 #include "partB.h"
 #include "server.h"
 #include "client.h"
+#include <time.h>
+#include "regular_chat.h"
 
 // Buffer size for sending and receiving messages
 #define BUFFER_SIZE_MESSAGE 1024

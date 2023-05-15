@@ -390,6 +390,7 @@ void copy_file_from_shm_mmap(char *filenameTo, char *sharedFilename, int fileSiz
     {
         print_error_and_exit("ERROR unlinking shared memory\n");
     }
+    
 
     close(fdTo);
     close(shm_fd);
@@ -510,6 +511,7 @@ int run_test_client(int isTest, int isClient, char *type, char *param, int *ipv4
         if (strcmp(type, "ipv4") == 0)
         {
             *ipv4 = 1;
+            printf("IPv4\n (run client test)");
         }
         else if (strcmp(type, "ipv6") == 0)
         {

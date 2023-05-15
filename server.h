@@ -36,5 +36,6 @@ void poll_for_events(struct pollfd *fds, nfds_t nfds, int timeout);
 void handle_user_input(int clientSock, char *messageBuffer, int bufferSize);
 // receive data on a socket
 int handle_client_message(int clientSock, char *messageBuffer, int bufferSize, char *port);
+void server_send_large_file(char *filename, int sockfd);
 
 #endif

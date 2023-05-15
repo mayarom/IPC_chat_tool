@@ -18,6 +18,12 @@ int main(int argc, char *argv[])
 
     parse_arguments(argc, argv, &isClient, &isServer, &isTest, &quiet, &ip, &port, &type, &param);
 
+    // if there isTest = false
+    if (!isTest)
+    {
+        run_program_chat(isClient, isServer, ip, port);
+    }
+
     int result = run_test_client(isTest, isClient, type, param, &ipv4, &ipv6, &uds, &isMmap, &isPipe, &isTCP, &udp, &dgram, &stream, &filename);
     if (result != 0)
     {
@@ -28,76 +34,11 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-void client_main_func(char *ip, char *port)
-{
-    if (!quiet)
-    {
-        printClientTitle();
-        // connection info
-        printf("IP: %s\n", ip);
-        printf("Port: %s\n", port);
-    }
-
-    // Create socket
-    int sockfd = client_create_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-    // Get server address
-    struct sockaddr_in serv_addr;
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(port));
-    int rval = inet_pton(AF_INET, ip, &serv_addr.sin_addr); // Convert IPv4 from text to binary form
-    if (rval <= 0)
-    {
-        print_error_and_exit("ERROR inet_pton() failed");
-    }
-
-    // Connect to the server
-    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        print_error_and_exit("ERROR connecting");
-    }
-
-    // Create pollfd to monitor stdin and socket
-    struct pollfd fds[2];
-    fds[0].fd = STDIN_FILENO;
-    fds[0].events = POLLIN;
-    fds[1].fd = sockfd;
-    fds[1].events = POLLIN;
-
-    char messageBuffer[BUFFER_SIZE_MESSAGE];
-    int timeout = -1; // Infinite timeout
-
-    while (1)
-    {
-        // Poll stdin and socket
-        client_poll_for_events(fds, 2, timeout);
-
-        if (fds[0].revents & POLLIN)
-        {
-            // User input
-            client_handle_user_input(sockfd, messageBuffer, BUFFER_SIZE_MESSAGE);
-        }
-
-        if (fds[1].revents & POLLIN)
-        {
-            // Message from server
-            int bytesRecv = client_handle_client_message(sockfd, messageBuffer, BUFFER_SIZE_MESSAGE, port);
-            if (bytesRecv == 0)
-            {
-                printf("Server closed connection... bye bye\n");
-                exit(0);
-            }
-        }
-    }
-
-    close(sockfd);
-}
-void run_program(int isClient, int isServer, char *ip, char *port, void (*print_usage)())
+void run_program(int isClient, int isServer, char *ip, char *port, void (*print_usage)(void))
 {
     if (isClient)
     {
+
         client_main_func(ip, port);
     }
     else if (isServer)
@@ -109,29 +50,59 @@ void run_program(int isClient, int isServer, char *ip, char *port, void (*print_
         print_usage();
     }
 }
-void run_uds_test(int uds, int dgram, int stream, int sockfd, char *new_port, int quiet)
-{
-    int bytesSent;
 
-    if (uds)
+void client_main_func(char *ip, char *port)
+{
+    if (!quiet)
     {
-        if (dgram)
-        {
-            if (!quiet)
-                printf("UDS DGRAM\n");
-            bytesSent = send(sockfd, "uds dgram", 9, 0); // send isTest command
-            sleep(0.1);
-            send_file(0, new_port, "chat_test.txt", AF_UNIX, SOCK_DGRAM, 0, quiet);
-        }
-        else if (stream)
-        {
-            if (!quiet)
-                printf("UDS STREAM\n");
-            bytesSent = send(sockfd, "uds stream", 10, 0); // send isTest command
-            sleep(0.1);
-            send_file(0, new_port, "chat_test.txt", AF_UNIX, SOCK_STREAM, 0, quiet);
-        }
+        printClientTitle();
+        printf("IP: %s\n", ip);
+        printf("Port: %s\n", port);
+        printf("Type: %s\n", type);
+        printf("Param: %s\n", param);
+        printf("Press Ctrl+C to exit\n");
     }
+
+    // Create socket
+    int sockfd = client_create_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+    // Get server address
+    struct sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(atoi(port));
+    int rval = inet_pton(AF_INET, ip, &serv_addr.sin_addr);
+    if (rval <= 0)
+    {
+        print_error_and_exit("ERROR inet_pton() failed");
+    }
+
+    // Connect to the server
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    {
+        print_error_and_exit("ERROR connecting");
+    }
+
+    if (!quiet)
+    {
+        // Request to send the large file
+        char request[] = "start to send...";
+        send(sockfd, request, strlen(request), 0);
+    }
+
+    // Receive the large file and measure time
+    char *large_filename = "received_large_file.bin";
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+    receive_large_file(sockfd, "received_large_file.bin");
+
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+
+    close(sockfd);
+
+    // Calculate elapsed time
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) * 1e3 + (end_time.tv_nsec - start_time.tv_nsec) / 1e6; // milliseconds
+    printf("Received file in %.2f ms\n", elapsed_time);
 }
 
 void server_main_func(char *port)
@@ -162,60 +133,22 @@ void server_main_func(char *port)
         if (!quiet)
             printf("Client connected\n");
 
-        // Create poll
-        struct pollfd fds[2] = {
-            {.fd = STDIN_FILENO, .events = POLLIN},
-            {.fd = clientSock, .events = POLLIN}};
+        // Send large file and measure time
+        char *large_filename = "large_file.bin";
+        struct timespec start_time, end_time;
+        clock_gettime(CLOCK_MONOTONIC, &start_time);
+        send_large_file("large_file.bin", sockfd);
 
-        char messageBuffer[BUFFER_SIZE_MESSAGE];
+        clock_gettime(CLOCK_MONOTONIC, &end_time);
 
-        // Connection loop
-        while (1)
-        {
-            // Poll for events
-            poll_for_events(fds, 2, -1);
-
-            // Check for user input
-            if (fds[0].revents & POLLIN)
-            {
-                handle_user_input(clientSock, messageBuffer, BUFFER_SIZE_MESSAGE);
-            }
-
-            // Check for client message
-            if (fds[1].revents & POLLIN)
-            {
-                if (handle_client_message(clientSock, messageBuffer, BUFFER_SIZE_MESSAGE, port))
-                {
-                    break;
-                }
-            }
-        }
         close(clientSock);
+
+        // Calculate elapsed time
+        double elapsed_time = (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+        printf("Time elapsed: %.6f seconds\n", elapsed_time);
     }
+
     close(sockfd);
-}
-
-void printServerTitle()
-{
-    int terminalWidth = 65; // Set the default terminal width
-
-    // Print the isServer title
-    printf("╔");
-    for (int i = 0; i < terminalWidth - 2; i++)
-        printf("═");
-    printf("╗\n");
-    printf("║");
-    for (int i = 0; i < (terminalWidth - 22) / 2; i++) // Adjust for the title length
-        printf(" ");
-    printf("Server Chat Side");
-    for (int i = 0; i < (terminalWidth - 22) / 2; i++) // Adjust for the title length
-        printf(" ");
-    printf("    ║\n");
-
-    printf("╚");
-    for (int i = 0; i < terminalWidth - 2; i++)
-        printf("═");
-    printf("╝\n");
 }
 
 void parse_arguments(int argc, char *argv[], int *isClient, int *isServer, int *isTest, int *quiet, char **ip, char **port, char **type, char **param)
@@ -248,27 +181,51 @@ void parse_arguments(int argc, char *argv[], int *isClient, int *isServer, int *
 
 void printClientTitle()
 {
-    int terminalWidth = 65; // Set the default terminal width
+    int terminalWidth = 61; // Set the default terminal width
 
-    // Print the isClient title
-    printf("╔");
+    // Print the Client title
+    printf(CYAN "╔");
     for (int i = 0; i < terminalWidth - 2; i++)
         printf("═");
     printf("╗\n");
 
     printf("║");
-    for (int i = 0; i < (terminalWidth - 22) / 2; i++) // Adjust for the title length
+    for (int i = 0; i < (terminalWidth - 24) / 2; i++) // Adjust for the title length
         printf(" ");
-    printf("Client Chat Side");
-    for (int i = 0; i < (terminalWidth - 22) / 2; i++) // Adjust for the title length
+    printf(WHITE "   Client Chat Side   ");
+    for (int i = 0; i < (terminalWidth - 24) / 2; i++) // Adjust for the title length
         printf(" ");
-    printf("║\n");
+    printf(CYAN "║\n");
 
     printf("╚");
     for (int i = 0; i < terminalWidth - 2; i++)
         printf("═");
-    printf("╝\n");
+    printf("╝\n" RESET);
 }
+
+void printServerTitle()
+{
+    int terminalWidth = 61; // Set the default terminal width
+
+    // Print the Server title
+    printf(GREEN "╔");
+    for (int i = 0; i < terminalWidth - 2; i++)
+        printf("═");
+    printf("╗\n");
+    printf("║");
+    for (int i = 0; i < (terminalWidth - 24) / 2; i++) // Adjust for the title length
+        printf(" ");
+    printf(WHITE "    Server Chat Side    ");
+    for (int i = 0; i < (terminalWidth - 24) / 2; i++) // Adjust for the title length
+        printf(" ");
+    printf(GREEN "║\n");
+
+    printf("╚");
+    for (int i = 0; i < terminalWidth - 2; i++)
+        printf("═");
+    printf("╝\n" RESET);
+}
+
 void print_usage()
 {
     printf("╔══════════════════════════════════════════════════════╗\n");
@@ -279,6 +236,7 @@ void print_usage()
     printf("║   Server: ./stnc -[s] <port>                         ║\n");
     printf("║ Part B:                                              ║\n");
     printf("║   Client: ./stnc -[c] <ip> <port> -[p] <type> <param>║\n");
+    printf("║             Server: ./stnc -[s] <port> -[p] -[q]     ║\n");
     printf("╚══════════════════════════════════════════════════════╝\n");
 }
 int create_poll(int sockfd)
@@ -345,4 +303,110 @@ int find_file_size(char *fileName)
     int fileSize = ftell(file);
     fclose(file);
     return (int)fileSize;
+}
+
+void create_large_file(char *filename, int size_in_mb)
+{
+    FILE *file = fopen(filename, "wb");
+    if (file == NULL)
+    {
+        printf("Error: Unable to create file %s\n", filename);
+        exit(1);
+    }
+
+    int chunk_size = 1024 * 1024; // 1 MB
+    char *buffer = malloc(chunk_size);
+
+    if (buffer == NULL)
+    {
+        printf("Error: Unable to allocate memory for buffer\n");
+        fclose(file);
+        exit(1);
+    }
+
+    // Fill the buffer with random data
+    for (int i = 0; i < chunk_size; i++)
+    {
+        buffer[i] = rand() % 256;
+    }
+
+    // Write buffer to file multiple times to reach the desired size
+    for (int i = 0; i < size_in_mb; i++)
+    {
+        fwrite(buffer, 1, chunk_size, file);
+    }
+
+    fclose(file);
+    free(buffer);
+}
+void send_large_file(const char *file_name, int sockfd)
+{
+    FILE *file = fopen(file_name, "rb");
+    if (file == NULL)
+    {
+        perror("Error opening file");
+        return;
+    }
+
+    char buffer[1024];
+    size_t bytes_read;
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0)
+    {
+        if (send(sockfd, buffer, bytes_read, 0) == -1)
+        {
+            perror("Error sending file");
+            fclose(file);
+            return;
+        }
+    }
+
+    fclose(file);
+}
+
+void receive_large_file(int sockfd, const char *file_name)
+{
+    FILE *file = fopen(file_name, "wb");
+    if (file == NULL)
+    {
+        perror("Error opening file");
+        return;
+    }
+
+    char buffer[1024];
+    ssize_t bytes_received;
+    while ((bytes_received = recv(sockfd, buffer, sizeof(buffer), 0)) > 0)
+    {
+        fwrite(buffer, 1, bytes_received, file);
+    }
+
+    fclose(file);
+}
+
+// void run_program_chat(int isClient,int isServer,  ip, port, print_usage)
+void run_program_chat(int isClient, int isServer, char *ip, char *port)
+{
+    if (isClient)
+    {
+
+        run_regular_chat_client(ip, port);
+        printf("\n\033[1;33mYou: \033[0mEnter 'exit' to quit or select another usage:\n");
+        print_usage();
+        char *exitCmd = "exit\n";
+        char *input = malloc(sizeof(char) * 100);
+        fgets(input, 100, stdin);
+        if (strcmp(input, exitCmd) == 0)
+        {
+            printf("\033[1;31mDisconnected from the server. Goodbye!\033[0m\n");
+            free(input);
+            exit(0);
+        }
+        free(input);
+    }
+    else if (isServer)
+    {
+
+        run_regular_chat_server(port);
+    }
+    // else if (isClient && isServer)
+    print_usage();
 }

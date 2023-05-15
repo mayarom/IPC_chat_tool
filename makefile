@@ -5,9 +5,9 @@ CC = gcc
 all: stnc
 
 # Build stnc
-stnc: stnc.o partB.o common.o server.o client.o
+stnc: stnc.o partB.o common.o server.o client.o regular_chat.o
 	@echo "Building stnc..."
-	@$(CC) -o stnc stnc.o partB.o common.o server.o client.o
+	@$(CC) -o stnc stnc.o partB.o common.o server.o client.o regular_chat.o
 	@echo "stnc built successfully."
 	@echo "╔══════════════════════════════════════════════════════════════════════════╗"
 	@echo "║                                  Usage                                   ║"
@@ -17,6 +17,7 @@ stnc: stnc.o partB.o common.o server.o client.o
 	@echo "║   Server: ./stnc -[s] <port>                                             ║"
 	@echo "║ Part B:                                                                  ║"
 	@echo "║   Client: ./stnc -[c] <ip> <port> -[p] <type> <param>                    ║"
+	@echo "║   Server: ./stnc -[s] <port> -[p] -[q]                                   ║"
 	@echo "╚══════════════════════════════════════════════════════════════════════════╝"
 
 # Build isTest
